@@ -3,6 +3,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <initializer_list>
 #include <functional>
 #include <taichi/cpp/taichi.hpp>
 
@@ -128,31 +129,235 @@ std::string build_args(const std::vector<NamedArgumentRef>& args) {
   return ss.str();
 }
 
-std::string dump_taichi_aot_script(TiArch arch, const std::vector<NamedArgumentRef>& args) {
+
+
+
+
+
+
+
+struct Expr {
+  virtual ~Expr() {}
+  virtual void to_string(std::stringstream& ss) const = 0;
+
+  template<typename T>
+  static std::shared_ptr<Expr> create(T&& x) {
+    return std::shared_ptr<Expr>(static_cast<Expr*>(new T(std::move(x))));
+  }
+};
+typedef std::shared_ptr<Expr> ExprRef;
+
+struct Stmt {
+  virtual ~Stmt() {}
+  virtual void to_string(std::stringstream& ss) const = 0;
+
+  template<typename T>
+  static std::shared_ptr<Stmt> create(T&& x) {
+    return std::shared_ptr<Stmt>(static_cast<Stmt*>(new T(std::move(x))));
+  }
+
+  void commit() const;
+};
+typedef std::shared_ptr<Stmt> StmtRef;
+
+
+
+
+
+struct ScopeContext {
+  size_t indent = 4;
   std::stringstream ss;
-  ss << R"(
-import taichi as ti
 
-ti.init()" << arch2str(arch) << R"()
+  void commit_stmt(const Stmt* stmt) {
+    ss << std::string(indent, ' ');
+    stmt->to_string(ss);
+    ss << std::endl;
+  }
 
-)" << build_symbols(args) << R"(
+  std::string finish() {
+    std::string out = ss.str();
+    ss.clear();
+    return out;
+  }
+};
+thread_local ScopeContext scope_context_;
 
-@ti.kernel
-def f()" << build_params(args) << R"():
-    pass
 
-g_builder = ti.graph.GraphBuilder()
-g_builder.dispatch(f,)" << build_args(args) << R"()
-graph = g_builder.compile()
-
-mod = ti.aot.Module()" << arch2str(arch) << R"()
-mod.add_graph('g', graph)
-mod.save("module", '')
-)";
-  return ss.str();
+void Stmt::commit() const {
+  scope_context_.commit_stmt(this);
 }
 
 
+
+
+
+
+struct AddExpr : public Expr {
+  ExprRef a_;
+  ExprRef b_;
+
+  static ExprRef create(const ExprRef& a, const ExprRef& b) {
+    AddExpr out {};
+    out.a_ = a;
+    out.b_ = b;
+    return Expr::create(std::move(out));
+  }
+
+  virtual void to_string(std::stringstream& ss) const override {
+    ss << "(";
+    a_->to_string(ss);
+    ss << "+";
+    b_->to_string(ss);
+    ss << ")";
+  }
+};
+struct IntImmExpr : public Expr {
+  std::string arg_name_;
+  int32_t value_;
+
+  static ExprRef create(const std::string& arg_name) {
+    IntImmExpr out {};
+    out.arg_name_ = arg_name;
+    return Expr::create(std::move(out));
+  }
+  static ExprRef create(int32_t value) {
+    IntImmExpr out {};
+    out.value_ = value;
+    return Expr::create(std::move(out));
+  }
+
+  virtual void to_string(std::stringstream& ss) const override {
+    if (arg_name_.empty()) {
+      ss << "ti.i32(" << value_ << ")";
+    } else {
+      ss << arg_name_;
+    }
+  }
+
+  friend ExprRef operator+(const ExprRef& a, const ExprRef& b) {
+    return AddExpr::create(a, b);
+  }
+};
+struct FloatImmExpr : public Expr {
+  std::string arg_name_;
+  float value_;
+
+  static ExprRef create(const std::string& arg_name) {
+    FloatImmExpr out {};
+    out.arg_name_ = arg_name;
+    return Expr::create(std::move(out));
+  }
+  static ExprRef create(int32_t value) {
+    FloatImmExpr out {};
+    out.value_ = value;
+    return Expr::create(std::move(out));
+  }
+
+  virtual void to_string(std::stringstream& ss) const override {
+    if (arg_name_.empty()) {
+      ss << "ti.f32(" << value_ << ")";
+    } else {
+      ss << arg_name_;
+    }
+  }
+};
+struct IterVarExpr : public Expr {
+  std::string name_;
+  size_t begin_;
+  size_t end_;
+  size_t step_;
+
+  static ExprRef create(size_t begin, size_t end, size_t step) {
+    static size_t id_counter_ = 0;
+    IterVarExpr out {};
+    out.name_ = "it_" + std::to_string(id_counter_++);
+    out.begin_ = begin;
+    out.end_ = end;
+    out.step_ = step;
+    return Expr::create(std::move(out));
+  }
+
+  virtual void to_string(std::stringstream& ss) const override {
+    ss << name_;
+  }
+};
+struct IndexExpr : public Expr {
+  ExprRef alloc_;
+  ExprRef index_;
+
+  static ExprRef create(const ExprRef& alloc, const ExprRef& index) {
+    IndexExpr out {};
+    out.alloc_ = alloc;
+    out.index_ = index;
+    return Expr::create(std::move(out));
+  }
+
+  virtual void to_string(std::stringstream& ss) const override {
+    alloc_->to_string(ss);
+    ss << "[";
+    index_->to_string(ss);
+    ss << "]";
+  }
+};
+struct TupleExpr : public Expr {
+  std::vector<ExprRef> elems_;
+
+  static ExprRef create(std::vector<ExprRef>&& elems) {
+    TupleExpr out {};
+    out.elems_ = elems;
+    return Expr::create(std::move(out));
+  }
+
+  virtual void to_string(std::stringstream& ss) const override {
+    if (elems_.empty()) {
+      ss << ",";
+    } else {
+      for (const auto& elem : elems_) {
+        ss << "(";
+        elem->to_string(ss);
+        ss << "),";
+      }
+    }
+  }
+};
+struct NdArrayAllocExpr : public Expr {
+  std::string arg_name_;
+  TiNdArray ndarray_;
+
+  static ExprRef create(const TiNdArray& ndarray) {
+    static size_t id_counter_ = 0;
+    NdArrayAllocExpr out {};
+    out.arg_name_ = "ndarray_" + std::to_string(id_counter_);
+    out.ndarray_ = ndarray;
+    return Expr::create(std::move(out));
+  }
+
+  virtual void to_string(std::stringstream& ss) const override {
+    ss << arg_name_;
+  }
+};
+
+
+
+
+
+struct StoreStmt : public Stmt {
+  ExprRef dst_;
+  ExprRef value_;
+
+  static StmtRef create(const ExprRef& dst, const ExprRef& value) {
+    StoreStmt out {};
+    out.dst_ = dst;
+    out.value_ = value;
+    return Stmt::create(std::move(out));
+  }
+
+  virtual void to_string(std::stringstream& ss) const override {
+    dst_->to_string(ss);
+    ss << "=";
+    value_->to_string(ss);
+  }
+};
 
 
 
@@ -168,12 +373,18 @@ struct get_arg_ti_arg<int32_t> {
     arg.type = TI_ARGUMENT_TYPE_I32;
     arg.value.i32 = value;
   }
+  static inline ExprRef to_expr(int32_t value) {
+    return IntImmExpr::create(value);
+  }
 };
 template<>
 struct get_arg_ti_arg<float> {
   static inline void get(TiArgument& arg, float value) {
     arg.type = TI_ARGUMENT_TYPE_F32;
     arg.value.f32 = value;
+  }
+  static inline ExprRef to_expr(float value) {
+    return FloatImmExpr::create(value);
   }
 };
 template<>
@@ -182,7 +393,18 @@ struct get_arg_ti_arg<TiNdArray> {
     arg.type = TI_ARGUMENT_TYPE_NDARRAY;
     arg.value.ndarray = value;
   }
+  static inline ExprRef to_expr(const TiNdArray& value) {
+    return NdArrayAllocExpr::create(value);
+  }
 };
+
+
+
+
+
+
+
+
 
 
 
@@ -208,20 +430,53 @@ struct collect_args<TLast> {
 
 
 
+
+
+std::string dump_taichi_aot_script(TiArch arch, const std::vector<NamedArgumentRef>& args, const std::string& code) {
+  std::stringstream ss;
+  ss << R"(
+import taichi as ti
+
+ti.init()" << arch2str(arch) << R"()
+
+)" << build_symbols(args) << R"(
+
+@ti.kernel
+def f()" << build_params(args) << R"():
+)" << code << R"(
+
+g_builder = ti.graph.GraphBuilder()
+g_builder.dispatch(f,)" << build_args(args) << R"()
+graph = g_builder.compile()
+
+mod = ti.aot.Module()" << arch2str(arch) << R"()
+mod.add_graph('g', graph)
+mod.save("module", '')
+)";
+  return ss.str();
+}
+
+
+
+
 template<typename TFunc>
 struct Kernel {};
 
-template<typename ... TArgs>
-struct Kernel<std::function<void(TArgs ...)>> {
-  std::function<void(TArgs ...)> fn_;
+template<typename ... TExprs>
+struct Kernel<std::function<void(TExprs ...)>> {
+  std::function<void(TExprs ...)> fn_;
 
-  Kernel(std::function<void(TArgs ...)> fn) : fn_(std::move(fn)) {}
+  Kernel(std::function<void(TExprs ...)> fn) : fn_(std::move(fn)) {}
 
+  template<typename ... TArgs>
   void compile(const TArgs& ... args) {
+    static_assert(sizeof...(TArgs) == sizeof...(TExprs), "");
+
     std::vector<NamedArgumentRef> args2;
     args2.reserve(sizeof...(args));
     collect_args<TArgs ...>::collect(args2, args ...);
-    std::cout << dump_taichi_aot_script(TI_ARCH_VULKAN, args2);
+    fn_(get_arg_ti_arg<TArgs>::to_expr(args) ...);
+    std::cout << dump_taichi_aot_script(TI_ARCH_VULKAN, args2, scope_context_.finish());
   }
 };
 
@@ -246,16 +501,17 @@ auto to_kernel(TFunc f) {
 
 } // namespace ticpp
 
-void kernel_impl(int i, float f, TiNdArray ndarray) {}
+void kernel_impl(ticpp::ExprRef i, ticpp::ExprRef f, ticpp::ExprRef ndarray) {
+  auto stmt = ticpp::StoreStmt::create(
+    ticpp::IndexExpr::create(ndarray, ticpp::TupleExpr::create({ i, i })), f);
+  stmt->commit();
+}
 
 int main(int argc, const char** argv) {
 
   TiNdArray nd{};
   auto x = ticpp::to_kernel(kernel_impl);
-  x.compile(1, 0.0, nd);
-
-  //dump_taichi_aot_script(TI_ARCH_VULKAN, {});
-  //system("python app.py");
+  x.compile(1, 1.23f, nd);
 
   return 0;
 }
