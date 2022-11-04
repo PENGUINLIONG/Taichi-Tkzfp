@@ -12,8 +12,12 @@ endif()
 message("-- TAICHI_C_API_INSTALL_DIR=" ${TAICHI_C_API_INSTALL_DIR})
 
 # Declare executable target.
-add_executable(${TAICHI_AOT_APP_NAME} app.cpp)
-target_include_directories(${TAICHI_AOT_APP_NAME} PUBLIC ${TAICHI_C_API_INSTALL_DIR}/include)
+file(GLOB_RECURSE SRCS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+file(GLOB_RECURSE INCS "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp")
+add_executable(${TAICHI_AOT_APP_NAME} app.cpp ${SRCS} ${INCS})
+target_include_directories(${TAICHI_AOT_APP_NAME} PUBLIC
+    ${TAICHI_C_API_INSTALL_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Find built taichi C-API library in `TAICHI_C_API_INSTALL_DIR`.
 find_library(taichi_c_api taichi_c_api HINTS
