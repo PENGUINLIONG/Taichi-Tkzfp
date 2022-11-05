@@ -42,9 +42,10 @@ struct IntImmExpr : public Expr {
   std::string arg_name_;
   int32_t value_;
 
-  inline static ExprRef create(const std::string& arg_name) {
+  inline static ExprRef create(const std::string& arg_name, int32_t value) {
     IntImmExpr out {};
     out.arg_name_ = arg_name;
+    out.value_ = value;
     return Expr::create(std::move(out));
   }
   inline static ExprRef create(int32_t value) {
@@ -66,9 +67,10 @@ struct FloatImmExpr : public Expr {
   std::string arg_name_;
   float value_;
 
-  inline static ExprRef create(const std::string& arg_name) {
+  inline static ExprRef create(const std::string& arg_name, float value) {
     FloatImmExpr out {};
     out.arg_name_ = arg_name;
+    out.value_ = value;
     return Expr::create(std::move(out));
   }
   inline static ExprRef create(int32_t value) {
@@ -137,7 +139,7 @@ struct TupleExpr : public Expr {
 
   virtual void to_string(std::stringstream& ss) const override {
     if (elems_.empty()) {
-      ss << ",";
+      ss << ", ";
     } else {
       for (const auto& elem : elems_) {
         ss << "(";
@@ -152,10 +154,10 @@ struct NdArrayAllocExpr : public Expr {
   std::string arg_name_;
   TiNdArray ndarray_;
 
-  inline static ExprRef create(const TiNdArray& ndarray) {
+  inline static ExprRef create(const std::string& arg_name, const TiNdArray& ndarray) {
     static size_t id_counter_ = 0;
     NdArrayAllocExpr out {};
-    out.arg_name_ = "ndarray_" + std::to_string(id_counter_);
+    out.arg_name_ = arg_name;
     out.ndarray_ = ndarray;
     return Expr::create(std::move(out));
   }

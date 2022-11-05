@@ -23,7 +23,7 @@ struct arg_conv_t<int32_t> {
     arg.value.i32 = value;
   }
   static inline ExprRef to_expr(int32_t value) {
-    return IntImmExpr::create(value);
+    return IntImmExpr::create("_" + std::to_string(PARSE_CONTEXT.acquire_arg_idx()), value);
   }
 };
 template<>
@@ -33,7 +33,7 @@ struct arg_conv_t<float> {
     arg.value.f32 = value;
   }
   static inline ExprRef to_expr(float value) {
-    return FloatImmExpr::create(value);
+    return FloatImmExpr::create("_" + std::to_string(PARSE_CONTEXT.acquire_arg_idx()), value);
   }
 };
 template<>
@@ -43,7 +43,7 @@ struct arg_conv_t<TiNdArray> {
     arg.value.ndarray = value;
   }
   static inline ExprRef to_expr(const TiNdArray& value) {
-    return NdArrayAllocExpr::create(value);
+    return NdArrayAllocExpr::create("_" + std::to_string(PARSE_CONTEXT.acquire_arg_idx()), value);
   }
 };
 
@@ -69,37 +69,37 @@ struct collect_args_impl_t<TLast> {
 };
 
 
+struct CodeGenIntermediate {
+  std::vector<NamedArgumentRef> args;
+  std::vector<StmtRef> stmts;
 
-template<typename ... TArgs>
-std::vector<NamedArgumentRef> collect_args(const TArgs& ... args) {
-  std::vector<NamedArgumentRef> out;
-  out.reserve(sizeof...(args));
-  collect_args_impl_t<TArgs ...>::collect(out, args ...);
-  return out;
-}
-template<typename TFunc, typename ... TArgs>
-std::vector<StmtRef> collect_stmts(TFunc& fn, const TArgs& ... args) {
-  PARSE_CONTEXT.start();
-  fn(arg_conv_t<TArgs>::to_expr(args) ...);
-  std::vector<StmtRef> stmts = PARSE_CONTEXT.stop();
-  return stmts;
-}
+  template<typename TFunc, typename ... TArgs> 
+  static CodeGenIntermediate create(TFunc& fn, const TArgs& ... args) {
+    CodeGenIntermediate itm {};
 
+    itm.args.reserve(sizeof...(args));
+    collect_args_impl_t<TArgs ...>::collect(itm.args, args ...);
 
+    int32_t i = 0;
+    PARSE_CONTEXT.start();
+    fn(arg_conv_t<TArgs>::to_expr(args) ...);
+    itm.stmts = PARSE_CONTEXT.stop();
+
+    return itm;
+  }
+};
 
 extern std::string composite_python_script(
   TiArch arch,
-  const std::vector<NamedArgumentRef>& args,
-  const std::vector<StmtRef>& stmts
+  const CodeGenIntermediate& itm
 );
 
 
 
 template<typename TFunc, typename ... TArgs>
 std::string run_codegen(TiArch arch, TFunc& fn, TArgs ... args) {
-  std::vector<NamedArgumentRef> args2 = collect_args(args ...);
-  std::vector<StmtRef> stmts = collect_stmts(fn, args ...);
-  std::string out = composite_python_script(arch, args2, stmts);
+  CodeGenIntermediate itm = CodeGenIntermediate::create(fn, args ...);
+  std::string out = composite_python_script(arch, itm);
   return out;
 }
 

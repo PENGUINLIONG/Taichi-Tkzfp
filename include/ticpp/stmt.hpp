@@ -34,7 +34,7 @@ struct StoreStmt : public Stmt {
 
   virtual void to_string(std::stringstream& ss) const override {
     dst_->to_string(ss);
-    ss << "=";
+    ss << " = ";
     value_->to_string(ss);
   }
 };

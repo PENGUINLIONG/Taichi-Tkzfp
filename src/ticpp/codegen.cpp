@@ -47,7 +47,7 @@ std::string shape2str(const TiNdShape& shape) {
   ss << "(";
   if (shape.dim_count != 0) {
     for (uint32_t i = 0; i < shape.dim_count; ++i) {
-      ss << shape.dims[i] << ",";
+      ss << shape.dims[i] << ", ";
     }
   } else {
     ss << ",";
@@ -65,16 +65,16 @@ std::string build_symbols(const std::vector<NamedArgumentRef>& args) {
 
     switch (arg.argument.type) {
     case TI_ARGUMENT_TYPE_I32:
-      ss << "ti.graph.Arg(ti.graph.ArgKind.SCALAR,'" << arg.name << "',ti.i32)";
+      ss << "ti.graph.Arg(ti.graph.ArgKind.SCALAR, '" << arg.name << "', ti.i32)";
       break;
     case TI_ARGUMENT_TYPE_F32:
-      ss << "ti.graph.Arg(ti.graph.ArgKind.SCALAR,'" << arg.name << "',ti.f32)";
+      ss << "ti.graph.Arg(ti.graph.ArgKind.SCALAR, '" << arg.name << "', ti.f32)";
       break;
     case TI_ARGUMENT_TYPE_NDARRAY:
-      ss << "ti.graph.Arg(ti.graph.ArgKind.NDARRAY,"
-        << "'" << arg.name << "',"
-        << dtype2str(arg.argument.value.ndarray.elem_type) << ","
-        << "field_dim=" << arg.argument.value.ndarray.shape.dim_count << ","
+      ss << "ti.graph.Arg(ti.graph.ArgKind.NDARRAY, "
+        << "'" << arg.name << "', "
+        << dtype2str(arg.argument.value.ndarray.elem_type) << ", "
+        << "field_dim=" << arg.argument.value.ndarray.shape.dim_count << ", "
         << "element_shape=" << shape2str(arg.argument.value.ndarray.elem_shape) << ")";
       break;
     default:
@@ -90,7 +90,7 @@ std::string build_params(const std::vector<NamedArgumentRef>& args) {
   for (const NamedArgumentRef& arg2 : args) {
     const TiNamedArgument& arg = arg2->arg;
 
-    ss << arg.name << ":";
+    ss << arg.name << ": ";
 
     switch (arg.argument.type) {
     case TI_ARGUMENT_TYPE_I32:
@@ -105,7 +105,7 @@ std::string build_params(const std::vector<NamedArgumentRef>& args) {
     default:
       assert(false);
     }
-    ss << ",";
+    ss << ", ";
   }
   return ss.str();
 }
@@ -113,7 +113,7 @@ std::string build_params(const std::vector<NamedArgumentRef>& args) {
 std::string build_args(const std::vector<NamedArgumentRef>& args) {
   std::stringstream ss;
   for (const NamedArgumentRef& arg : args) {
-    ss << "sym" << arg->arg_name << ",";
+    ss << "sym" << arg->arg_name << ", ";
   }
   return ss.str();
 }
@@ -130,23 +130,22 @@ std::string build_code(const std::vector<StmtRef>& stmts) {
 
 std::string composite_python_script(
   TiArch arch,
-  const std::vector<NamedArgumentRef>& args,
-  const std::vector<StmtRef>& stmts
+  const CodeGenIntermediate& itm
 ) {
   std::stringstream ss;
   ss << R"(
 import taichi as ti
 
-ti.init()" << arch2str(arch) << R"()
+ti.init()" << arch2str(arch) << R"(, offline_cache=False)
 
-)" << build_symbols(args) << R"(
+)" << build_symbols(itm.args) << R"(
 
 @ti.kernel
-def f()" << build_params(args) << R"():
-)" << build_code(stmts) << R"(
+def f()" << build_params(itm.args) << R"():
+)" << build_code(itm.stmts) << R"(
 
 g_builder = ti.graph.GraphBuilder()
-g_builder.dispatch(f,)" << build_args(args) << R"()
+g_builder.dispatch(f,)" << build_args(itm.args) << R"()
 graph = g_builder.compile()
 
 mod = ti.aot.Module()" << arch2str(arch) << R"()

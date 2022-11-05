@@ -10,7 +10,12 @@ struct ParseFrame {
 };
 
 struct ParseContext {
+  uint32_t i = 0;
   std::vector<ParseFrame> frames;
+
+  inline uint32_t acquire_arg_idx() {
+    return i++;
+  }
 
   void commit_stmt(const StmtRef& stmt);
 
