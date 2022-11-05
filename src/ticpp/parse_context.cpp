@@ -12,11 +12,17 @@ void ParseContext::start() {
 
   frames.emplace_back();
 }
-std::vector<StmtRef> ParseContext::stop() {
+ParseResult ParseContext::stop() {
   assert(!frames.empty());
   uint32_t indent = frames.size() * 4;
   assert(indent == 4);
-  return frames.back().stmts;
+
+  ParseResult out {};
+  out.args = std::move(args);
+  out.stmts = std::move(frames.back().stmts);
+
+  frames.pop_back();
+  return out;
 }
 
 thread_local ParseContext PARSE_CONTEXT;

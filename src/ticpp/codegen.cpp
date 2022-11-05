@@ -130,7 +130,7 @@ std::string build_code(const std::vector<StmtRef>& stmts) {
 
 std::string composite_python_script(
   TiArch arch,
-  const CodeGenIntermediate& itm
+  const ParseResult& itm
 ) {
   std::stringstream ss;
   ss << R"(
