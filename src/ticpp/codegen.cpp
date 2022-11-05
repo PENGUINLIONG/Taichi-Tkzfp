@@ -2,8 +2,6 @@
 
 namespace ticpp {
 
-namespace {
-
 const char* arch2str(TiArch arch) {
   switch (arch) {
   case TI_ARCH_VULKAN:
@@ -120,11 +118,21 @@ std::string build_args(const std::vector<NamedArgumentRef>& args) {
   return ss.str();
 }
 
-} // namespace
+std::string build_code(const std::vector<StmtRef>& stmts) {
+  std::stringstream ss;
+  for (const StmtRef& stmt : stmts) {
+    ss << "    ";
+    stmt->to_string(ss);
+    ss << std::endl;
+  }
+  return ss.str();
+}
 
-
-
-std::string gen_code(TiArch arch, const std::vector<NamedArgumentRef>& args, const std::string& code) {
+std::string composite_python_script(
+  TiArch arch,
+  const std::vector<NamedArgumentRef>& args,
+  const std::vector<StmtRef>& stmts
+) {
   std::stringstream ss;
   ss << R"(
 import taichi as ti
@@ -135,7 +143,7 @@ ti.init()" << arch2str(arch) << R"()
 
 @ti.kernel
 def f()" << build_params(args) << R"():
-)" << code << R"(
+)" << build_code(stmts) << R"(
 
 g_builder = ti.graph.GraphBuilder()
 g_builder.dispatch(f,)" << build_args(args) << R"()

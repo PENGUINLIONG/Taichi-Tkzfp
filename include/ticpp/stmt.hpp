@@ -1,10 +1,11 @@
+// AST statements.
+// @PENGUINLIONG
 #pragma once
 #include "ticpp/expr.hpp"
-#include "scope_context.hpp"
 
 namespace ticpp {
 
-struct Stmt {
+struct Stmt : std::enable_shared_from_this<Stmt> {
   virtual ~Stmt() {}
   virtual void to_string(std::stringstream& ss) const = 0;
 
@@ -13,9 +14,7 @@ struct Stmt {
     return std::shared_ptr<Stmt>(static_cast<Stmt*>(new T(std::move(x))));
   }
 
-  inline void commit() const {
-    scope_context_.commit_stmt(this);
-  }
+  void commit();
 };
 typedef std::shared_ptr<Stmt> StmtRef;
 

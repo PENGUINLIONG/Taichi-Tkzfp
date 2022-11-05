@@ -1,7 +1,7 @@
 // Code generator.
 // @PENGUINLIONG
 #pragma once
-#include "ticpp/stmt.hpp"
+#include "ticpp/parse_context.hpp"
 
 namespace ticpp {
 
@@ -15,10 +15,10 @@ typedef std::unique_ptr<NamedArgument> NamedArgumentRef;
 
 
 template<typename T>
-struct get_arg_ti_arg {};
+struct arg_conv_t {};
 template<>
-struct get_arg_ti_arg<int32_t> {
-  static inline void get(TiArgument& arg, int32_t value) {
+struct arg_conv_t<int32_t> {
+  static inline void to_ti_arg(TiArgument& arg, int32_t value) {
     arg.type = TI_ARGUMENT_TYPE_I32;
     arg.value.i32 = value;
   }
@@ -27,8 +27,8 @@ struct get_arg_ti_arg<int32_t> {
   }
 };
 template<>
-struct get_arg_ti_arg<float> {
-  static inline void get(TiArgument& arg, float value) {
+struct arg_conv_t<float> {
+  static inline void to_ti_arg(TiArgument& arg, float value) {
     arg.type = TI_ARGUMENT_TYPE_F32;
     arg.value.f32 = value;
   }
@@ -37,8 +37,8 @@ struct get_arg_ti_arg<float> {
   }
 };
 template<>
-struct get_arg_ti_arg<TiNdArray> {
-  static inline void get(TiArgument& arg, const TiNdArray& value) {
+struct arg_conv_t<TiNdArray> {
+  static inline void to_ti_arg(TiArgument& arg, const TiNdArray& value) {
     arg.type = TI_ARGUMENT_TYPE_NDARRAY;
     arg.value.ndarray = value;
   }
@@ -49,53 +49,77 @@ struct get_arg_ti_arg<TiNdArray> {
 
 // Collect a list of `NamedArgument`s from variadic parameter pack.
 template<typename ... TArgs>
-struct collect_args {};
+struct collect_args_impl_t {};
 template<typename TFirst, typename ... TArgs>
-struct collect_args<TFirst, TArgs ...> {
+struct collect_args_impl_t<TFirst, TArgs ...> {
   static inline void collect(std::vector<NamedArgumentRef>& out, const TFirst& x, const TArgs& ... args) {
-    collect_args<TFirst>::collect(out, x);
-    collect_args<TArgs ...>::collect(out, args ...);
+    collect_args_impl_t<TFirst>::collect(out, x);
+    collect_args_impl_t<TArgs ...>::collect(out, args ...);
   }
 };
 template<typename TLast>
-struct collect_args<TLast> {
+struct collect_args_impl_t<TLast> {
   static inline void collect(std::vector<NamedArgumentRef>& args, const TLast& x) {
     NamedArgumentRef arg = std::make_unique<NamedArgument>();
     arg->arg_name = "_" + std::to_string(args.size());
     arg->arg.name = arg->arg_name.c_str();
-    get_arg_ti_arg<TLast>::get(arg->arg.argument, x);
+    arg_conv_t<TLast>::to_ti_arg(arg->arg.argument, x);
     args.emplace_back(std::move(arg));
   }
 };
 
-std::string gen_code(
-    TiArch arch,
-    const std::vector<NamedArgumentRef>& args,
-    const std::string& code);
+
+
+template<typename ... TArgs>
+std::vector<NamedArgumentRef> collect_args(const TArgs& ... args) {
+  std::vector<NamedArgumentRef> out;
+  out.reserve(sizeof...(args));
+  collect_args_impl_t<TArgs ...>::collect(out, args ...);
+  return out;
+}
+template<typename TFunc, typename ... TArgs>
+std::vector<StmtRef> collect_stmts(TFunc& fn, const TArgs& ... args) {
+  PARSE_CONTEXT.start();
+  fn(arg_conv_t<TArgs>::to_expr(args) ...);
+  std::vector<StmtRef> stmts = PARSE_CONTEXT.stop();
+  return stmts;
+}
+
+
+
+extern std::string composite_python_script(
+  TiArch arch,
+  const std::vector<NamedArgumentRef>& args,
+  const std::vector<StmtRef>& stmts
+);
+
+
+
+template<typename TFunc, typename ... TArgs>
+std::string run_codegen(TiArch arch, TFunc& fn, TArgs ... args) {
+  std::vector<NamedArgumentRef> args2 = collect_args(args ...);
+  std::vector<StmtRef> stmts = collect_stmts(fn, args ...);
+  std::string out = composite_python_script(arch, args2, stmts);
+  return out;
+}
+
 
 template<typename TFunc>
 struct Kernel {};
-
 template<typename ... TExprs>
 struct Kernel<std::function<void(TExprs ...)>> {
+  TiArch arch_;
   std::function<void(TExprs ...)> fn_;
 
-  Kernel(std::function<void(TExprs ...)> fn) : fn_(std::move(fn)) {}
+  Kernel(TiArch arch, std::function<void(TExprs ...)> fn) :
+    arch_(arch), fn_(std::move(fn)) {}
 
   template<typename ... TArgs>
-  void compile(const TArgs& ... args) {
+  std::string compile(const TArgs& ... args) {
     static_assert(sizeof...(TArgs) == sizeof...(TExprs), "");
-
-    std::vector<NamedArgumentRef> args2;
-    args2.reserve(sizeof...(args));
-    collect_args<TArgs ...>::collect(args2, args ...);
-    fn_(get_arg_ti_arg<TArgs>::to_expr(args) ...);
-    std::cout << gen_code(TI_ARCH_VULKAN, args2, scope_context_.finish());
+    return run_codegen(arch_, fn_, args ...);
   }
 };
-
-
-
 
 
 
@@ -114,7 +138,7 @@ struct get_func_ty<void(*)(TArgs ...)> {
 template<typename TFunc>
 auto to_kernel(TFunc f) {
   typename get_func_ty<TFunc>::type func { f };
-  return Kernel<typename get_func_ty<TFunc>::type> { std::move(func) };
+  return Kernel<typename get_func_ty<TFunc>::type>(TI_ARCH_VULKAN, std::move(func));
 }
 
 

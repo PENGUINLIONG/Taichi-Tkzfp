@@ -18,10 +18,10 @@ void kernel_impl(ticpp::ExprRef i, ticpp::ExprRef f, ticpp::ExprRef ndarray) {
 }
 
 int main(int argc, const char** argv) {
-
   TiNdArray nd{};
   auto x = ticpp::to_kernel(kernel_impl);
-  x.compile(1, 1.23f, nd);
+  std::string code = x.compile(1, 1.23f, nd);
+  std::cout << code << std::endl;
 
   return 0;
 }
