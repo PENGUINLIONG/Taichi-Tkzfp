@@ -37,6 +37,25 @@ struct AddExpr : public Expr {
     ss << ")";
   }
 };
+struct SubExpr : public Expr {
+  ExprRef a_;
+  ExprRef b_;
+
+  inline static ExprRef create(const ExprRef& a, const ExprRef& b) {
+    SubExpr out {};
+    out.a_ = a;
+    out.b_ = b;
+    return Expr::create(std::move(out));
+  }
+
+  virtual void to_string(std::stringstream& ss) const override {
+    ss << "(";
+    a_->to_string(ss);
+    ss << "-";
+    b_->to_string(ss);
+    ss << ")";
+  }
+};
 
 struct IntImmExpr : public Expr {
   std::string arg_name_;
