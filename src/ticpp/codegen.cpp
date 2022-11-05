@@ -100,7 +100,7 @@ std::string build_params(const std::vector<NamedArgumentRef>& args) {
       ss << "ti.f32";
       break;
     case TI_ARGUMENT_TYPE_NDARRAY:
-      ss << "ti.ndarray(field_dim=" << arg.argument.value.ndarray.shape.dim_count << ")";
+      ss << "ti.types.ndarray(field_dim=" << arg.argument.value.ndarray.shape.dim_count << ")";
       break;
     default:
       assert(false);

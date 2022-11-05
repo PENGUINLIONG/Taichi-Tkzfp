@@ -1,44 +1,23 @@
-import argparse
 
 import taichi as ti
 
-WIDTH = 16
-HEIGHT = 16
+ti.init(ti.vulkan, offline_cache=False)
 
-def compile_graph_aot(arch):
-    ti.init(arch=arch)
-
-    if ti.lang.impl.current_cfg().arch != arch:
-        return
-
-    @ti.kernel
-    def chess_board(arr: ti.types.ndarray(field_dim=2)):
-        for i, j in arr:
-            value = ti.cast((j * (WIDTH + 1) + i) % 2, ti.f32)
-            arr[i, j] = value
+sym_0 = ti.graph.Arg(ti.graph.ArgKind.SCALAR, '_0', ti.i32)
+sym_1 = ti.graph.Arg(ti.graph.ArgKind.SCALAR, '_1', ti.f32)
+sym_2 = ti.graph.Arg(ti.graph.ArgKind.NDARRAY, '_2', ti.f32, field_dim=2, element_shape=(2, ))
 
 
-    _arr = ti.graph.Arg(ti.graph.ArgKind.NDARRAY,
-                        'arr',
-                        ti.f32,
-                        field_dim=2,
-                        element_shape=())
-
-    g_builder = ti.graph.GraphBuilder()
-    g_builder.dispatch(chess_board, _arr)
-    run_graph = g_builder.compile()
-
-    mod = ti.aot.Module(arch)
-    mod.add_graph('g_run', run_graph)
-    mod.save("module", '')
+@ti.kernel
+def f(_0: ti.i32, _1: ti.f32, _2: ti.types.ndarray(field_dim=2), ):
+    _2[(ti.i32(0)),(_0),].fill(_1)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--arch", type=str)
-    args = parser.parse_args()
+g_builder = ti.graph.GraphBuilder()
+g_builder.dispatch(f,sym_0, sym_1, sym_2, )
+graph = g_builder.compile()
 
-    if args.arch == "vulkan":
-        compile_graph_aot(arch=ti.vulkan)
-    else:
-        assert False
+mod = ti.aot.Module(ti.vulkan)
+mod.add_graph('g', graph)
+mod.save("module", '')
+
