@@ -25,17 +25,17 @@ std::string run_codegen(TiArch arch, TFunc& fn, TArgs ... args) {
 
 template<typename TFunc>
 struct Kernel {};
-template<typename ... TExprs>
-struct Kernel<std::function<void(TExprs ...)>> {
+template<typename ... TValues>
+struct Kernel<std::function<void(TValues ...)>> {
   TiArch arch_;
-  std::function<void(TExprs ...)> fn_;
+  std::function<void(TValues ...)> fn_;
 
-  Kernel(TiArch arch, std::function<void(TExprs ...)> fn) :
+  Kernel(TiArch arch, std::function<void(TValues ...)> fn) :
     arch_(arch), fn_(std::move(fn)) {}
 
   template<typename ... TArgs>
   std::string compile(const TArgs& ... args) {
-    static_assert(sizeof...(TArgs) == sizeof...(TExprs), "");
+    static_assert(sizeof...(TArgs) == sizeof...(TValues), "");
     return run_codegen(arch_, fn_, args ...);
   }
 };
