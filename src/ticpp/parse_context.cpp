@@ -8,17 +8,11 @@ void ParseContext::commit_stmt(const StmtRef& stmt) {
 }
 
 void ParseContext::start() {
-  assert(frames.empty());
-
   frames.emplace_back();
 }
 ParseResult ParseContext::stop() {
-  assert(!frames.empty());
-  uint32_t indent = frames.size() * 4;
-  assert(indent == 4);
-
   ParseResult out {};
-  out.args = std::move(args);
+  out.args = std::move(frames.back().args);
   out.stmts = std::move(frames.back().stmts);
 
   frames.pop_back();

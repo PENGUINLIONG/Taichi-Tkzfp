@@ -7,7 +7,10 @@ namespace ticpp {
 
 struct Expr {
   virtual ~Expr() {}
-  virtual void to_string(std::stringstream& ss) const = 0;
+  virtual void to_string(PythonScriptWriter& ss) const = 0;
+  virtual int32_t evaluate_i32() const {
+    throw std::runtime_error("not a i32 expr");
+  }
 
   template<typename T>
   inline static std::shared_ptr<Expr> create(T&& x) {
@@ -29,12 +32,15 @@ struct AddExpr : public Expr {
     return Expr::create(std::move(out));
   }
 
-  virtual void to_string(std::stringstream& ss) const override {
+  virtual void to_string(PythonScriptWriter& ss) const override {
     ss << "(";
     a_->to_string(ss);
     ss << "+";
     b_->to_string(ss);
     ss << ")";
+  }
+  virtual int32_t evaluate_i32() const override {
+    return a_->evaluate_i32() + b_->evaluate_i32();
   }
 };
 struct SubExpr : public Expr {
@@ -48,12 +54,15 @@ struct SubExpr : public Expr {
     return Expr::create(std::move(out));
   }
 
-  virtual void to_string(std::stringstream& ss) const override {
+  virtual void to_string(PythonScriptWriter& ss) const override {
     ss << "(";
     a_->to_string(ss);
     ss << "-";
     b_->to_string(ss);
     ss << ")";
+  }
+  virtual int32_t evaluate_i32() const override {
+    return a_->evaluate_i32() - b_->evaluate_i32();
   }
 };
 
@@ -73,12 +82,15 @@ struct IntImmExpr : public Expr {
     return Expr::create(std::move(out));
   }
 
-  virtual void to_string(std::stringstream& ss) const override {
+  virtual void to_string(PythonScriptWriter& ss) const override {
     if (arg_name_.empty()) {
-      ss << "ti.i32(" << value_ << ")";
+      ss << value_;
     } else {
       ss << arg_name_;
     }
+  }
+  virtual int32_t evaluate_i32() const override {
+    return value_;
   }
 };
 
@@ -98,9 +110,9 @@ struct FloatImmExpr : public Expr {
     return Expr::create(std::move(out));
   }
 
-  virtual void to_string(std::stringstream& ss) const override {
+  virtual void to_string(PythonScriptWriter& ss) const override {
     if (arg_name_.empty()) {
-      ss << "ti.f32(" << value_ << ")";
+      ss << value_;
     } else {
       ss << arg_name_;
     }
@@ -109,21 +121,15 @@ struct FloatImmExpr : public Expr {
 
 struct IterVarExpr : public Expr {
   std::string name_;
-  size_t begin_;
-  size_t end_;
-  size_t step_;
 
-  inline static ExprRef create(size_t begin, size_t end, size_t step) {
+  inline static ExprRef create() {
     static size_t id_counter_ = 0;
     IterVarExpr out {};
     out.name_ = "it_" + std::to_string(id_counter_++);
-    out.begin_ = begin;
-    out.end_ = end;
-    out.step_ = step;
     return Expr::create(std::move(out));
   }
 
-  virtual void to_string(std::stringstream& ss) const override {
+  virtual void to_string(PythonScriptWriter& ss) const override {
     ss << name_;
   }
 };
@@ -139,7 +145,7 @@ struct IndexExpr : public Expr {
     return Expr::create(std::move(out));
   }
 
-  virtual void to_string(std::stringstream& ss) const override {
+  virtual void to_string(PythonScriptWriter& ss) const override {
     alloc_->to_string(ss);
     ss << "[";
     index_->to_string(ss);
@@ -147,16 +153,16 @@ struct IndexExpr : public Expr {
   }
 };
 
-struct TupleExpr : public Expr {
+struct VectorExpr : public Expr {
   std::vector<ExprRef> elems_;
 
   inline static ExprRef create(std::vector<ExprRef>&& elems) {
-    TupleExpr out {};
+    VectorExpr out {};
     out.elems_ = elems;
     return Expr::create(std::move(out));
   }
 
-  virtual void to_string(std::stringstream& ss) const override {
+  virtual void to_string(PythonScriptWriter& ss) const override {
     if (elems_.empty()) {
       ss << ", ";
     } else {
@@ -174,15 +180,31 @@ struct NdArrayAllocExpr : public Expr {
   TiNdArray ndarray_;
 
   inline static ExprRef create(const std::string& arg_name, const TiNdArray& ndarray) {
-    static size_t id_counter_ = 0;
     NdArrayAllocExpr out {};
     out.arg_name_ = arg_name;
     out.ndarray_ = ndarray;
     return Expr::create(std::move(out));
   }
 
-  virtual void to_string(std::stringstream& ss) const override {
+  virtual void to_string(PythonScriptWriter& ss) const override {
     ss << arg_name_;
+  }
+};
+
+struct TypeCastExpr : public Expr {
+  std::string target_ty_;
+  ExprRef expr_;
+  inline static ExprRef create(const std::string& target_ty, const ExprRef& expr) {
+    TypeCastExpr out {};
+    out.target_ty_ = target_ty;
+    out.expr_ = expr;
+    return Expr::create(std::move(out));
+  }
+
+  virtual void to_string(PythonScriptWriter& ss) const override {
+    ss << target_ty_ << "(";
+    expr_->to_string(ss);
+    ss << ")";
   }
 };
 

@@ -141,12 +141,13 @@ std::string build_args(const std::vector<NamedArgumentRef>& args) {
 }
 
 std::string build_code(const std::vector<StmtRef>& stmts) {
-  std::stringstream ss;
+  PythonScriptWriter ss;
+  ss.push_indent();
   for (const StmtRef& stmt : stmts) {
-    ss << "    ";
     stmt->to_string(ss);
-    ss << std::endl;
+    ss.commit_line();
   }
+  ss.pop_indent();
   return ss.str();
 }
 

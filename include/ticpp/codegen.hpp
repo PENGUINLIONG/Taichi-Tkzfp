@@ -19,6 +19,7 @@ std::string run_codegen(TiArch arch, TFunc& fn, TArgs ... args) {
   ParseResult itm = PARSE_CONTEXT.stop();
 
   std::string out = composite_python_script(arch, itm);
+  std::cout << out << std::endl;
   return out;
 }
 

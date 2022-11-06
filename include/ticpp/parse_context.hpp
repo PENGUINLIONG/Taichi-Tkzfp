@@ -46,21 +46,21 @@ struct ParseResult {
 
 
 struct ParseFrame {
+  std::vector<NamedArgumentRef> args;
   std::vector<StmtRef> stmts;
 };
 struct ParseContext {
-  std::vector<NamedArgumentRef> args;
   std::vector<ParseFrame> frames;
 
   template<typename T>
   inline uint32_t reg_arg(const T& x) {
-    uint32_t iarg = args.size();
+    uint32_t iarg = frames.back().args.size();
 
     NamedArgumentRef arg = std::make_unique<NamedArgument>();
     arg->arg_name = "_" + std::to_string(iarg);
     arg->arg.name = arg->arg_name.c_str();
     arg_conv_t<T>::to_ti_arg(arg->arg.argument, x);
-    args.emplace_back(std::move(arg));
+    frames.back().args.emplace_back(std::move(arg));
 
     return iarg;
   }
@@ -99,10 +99,33 @@ struct FloatValue {
     return FloatValue { AddExpr::create(a.expr_, b.expr_) };
   }
 };
-struct TupleValue {
+struct VectorValue {
   ExprRef expr_;
 
-  TupleValue(std::vector<ExprRef>&& exprs) : expr_(TupleExpr::create(std::move(exprs))) {}
+  VectorValue(std::vector<ExprRef>&& exprs) : expr_(VectorExpr::create(std::move(exprs))) {}
+  VectorValue(std::initializer_list<IntValue> values) {
+    std::vector<ExprRef> values2;
+    for (const auto& value : values) {
+      values2.emplace_back(value.expr_);
+    }
+    expr_ = VectorExpr::create(std::move(values2));
+  }
+  VectorValue(std::initializer_list<FloatValue> values) {
+    std::vector<ExprRef> values2;
+    for (const auto& value : values) {
+      values2.emplace_back(value.expr_);
+    }
+    expr_ = VectorExpr::create(std::move(values2));
+  }
+};
+struct IterVarValue {
+  ExprRef expr_;
+
+  IterVarValue(const ExprRef& expr) : expr_(expr) {}
+
+  IntValue operator[](int32_t i) const {
+    return IntValue { IndexExpr::create(expr_, IntImmExpr::create(i)) };
+  }
 };
 struct NdArrayValue {
   ExprRef expr_;
@@ -111,12 +134,15 @@ struct NdArrayValue {
     expr_(NdArrayAllocExpr::create(name, ndarray)) {}
   NdArrayValue(ExprRef&& expr) : expr_(std::move(expr)) {}
 
+  NdArrayValue operator[](const IterVarValue& itervar) {
+    return NdArrayValue { IndexExpr::create(expr_, itervar.expr_) };
+  }
   NdArrayValue operator[](const std::vector<IntValue>& idxs) {
     std::vector<ExprRef> idxs2(idxs.size());
     for (size_t i = 0; i < idxs.size(); ++i) {
       idxs2.at(i) = idxs.at(i).expr_;
     }
-    return NdArrayValue { IndexExpr::create(expr_, TupleExpr::create(std::move(idxs2))) };
+    return NdArrayValue { IndexExpr::create(expr_, VectorExpr::create(std::move(idxs2))) };
   }
 
   NdArrayValue& operator=(const IntValue& x) {
@@ -127,7 +153,46 @@ struct NdArrayValue {
     StoreStmt::create(expr_, x.expr_)->commit();
     return *this;
   }
+  NdArrayValue& operator=(const VectorValue& x) {
+    StoreStmt::create(expr_, x.expr_)->commit();
+    return *this;
+  }
 };
+
+struct ForControlFlow {
+  ExprRef itervar_;
+  ExprRef range_;
+  StmtRef stmt_;
+
+  ForControlFlow(const ExprRef& range) :
+    itervar_(IterVarExpr::create()),
+    range_(range) {}
+
+  template<typename T>
+  void operator<<(T block) {
+    PARSE_CONTEXT.start();
+    block(IterVarValue { itervar_ });
+    ParseResult res = PARSE_CONTEXT.stop();
+    assert(res.args.empty());
+
+    stmt_ = ForStmt::create(std::move(itervar_), std::move(range_), std::move(res.stmts));
+    stmt_->commit();
+  }
+};
+
+#define TICPP_FOR(itervar, range) \
+  ::ticpp::ForControlFlow(range.expr_) << [&](const ::ticpp::IterVarValue& itervar)
+
+inline IntValue to_int(const FloatValue& value) {
+  return IntValue { TypeCastExpr::create("ti.i32", value.expr_) };
+}
+inline FloatValue to_float(const IntValue& value) {
+  return FloatValue { TypeCastExpr::create("ti.f32", value.expr_) };
+}
+
+
+
+
 
 
 

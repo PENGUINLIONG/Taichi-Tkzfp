@@ -12,7 +12,12 @@ namespace ticpp {
 } // namespace ticpp
 
 void kernel_impl(ticpp::IntValue i, ticpp::FloatValue f, ticpp::NdArrayValue ndarray) {
-  ndarray[{0, i}] = f;
+  TICPP_FOR(idxs, ndarray) {
+    ndarray[idxs] = ticpp::VectorValue({
+      ticpp::to_float(idxs[0]),
+      ticpp::to_float(idxs[1])
+    });
+  };
 }
 
 int main(int argc, const char** argv) {
@@ -27,11 +32,21 @@ int main(int argc, const char** argv) {
 
   std::vector<float> host_arr(4 * 8 * 2);
   arr.read(host_arr);
-  std::cout << host_arr.at(2) << std::endl;
 
-  //for (const float& x : host_arr) {
-  //  std::cout << x << std::endl;
-  //}
+  for (size_t i = 0; i < 4; ++i) {
+    for (size_t j = 0; j < 8; ++j) {
+      std::cout << "(";
+      for (size_t k = 0; k < 2; ++k) {
+        std::cout << host_arr[(i * 8 + j) * 2 + k];
+      }
+      std::cout << ")";
+    }
+    std::cout << std::endl;
+  }
+
+  // for (const float& x : host_arr) {
+  //   std::cout << x << std::endl;
+  // }
 
   return 0;
 }
