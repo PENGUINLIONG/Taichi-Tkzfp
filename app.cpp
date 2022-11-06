@@ -20,21 +20,8 @@ int main(int argc, const char** argv) {
 
   ti::NdArray<float> arr = runtime.allocate_ndarray<float>({4, 8}, {2}, true);
 
-  auto x = ticpp::to_kernel(kernel_impl);
-  std::string code = x.compile(1, 1.23f, arr.ndarray());
-
-  std::fstream f("app.py", std::ios::out | std::ios::trunc);
-  f << code << std::endl;
-
-  system("/Users/penguinliong/opt/anaconda3/bin/python3 app.py");
-
-  ti::AotModule mod = runtime.load_aot_module("module");
-  ti::ComputeGraph g = mod.get_compute_graph("g");
-  g["_0"] = 1;
-  g["_1"] = 1.23f;
-  g["_2"] = arr.ndarray();
-
-  g.launch();
+  auto x = ticpp::to_kernel(runtime, kernel_impl);
+  x.launch(1, 1.23f, arr.ndarray());
 
   runtime.wait();
 

@@ -1,6 +1,28 @@
+#include <fstream>
 #include "ticpp/codegen.hpp"
 
 namespace ticpp {
+
+void dump_aot_script(const std::string& script) {
+  {
+    std::fstream f("app.py", std::ios::out | std::ios::trunc);
+    f << script << std::endl;
+  }
+  system("TI_OFFLINE_CACHE=0 /Users/penguinliong/opt/anaconda3/bin/python3 app.py");
+}
+std::string load_aot_module_path() {
+  std::string path;
+  {
+    std::fstream f("temp_dir", std::ios::in);
+    f >> path;
+  }
+  return path;
+}
+void remove_aot_artifact(const std::string& temp_dir) {
+  system("rm temp_dir");
+  system("rm app.py");
+  system(("rm -r " + temp_dir).c_str());
+}
 
 const char* arch2str(TiArch arch) {
   switch (arch) {
@@ -134,6 +156,7 @@ std::string composite_python_script(
 ) {
   std::stringstream ss;
   ss << R"(
+import tempfile
 import taichi as ti
 
 ti.init()" << arch2str(arch) << R"(, offline_cache=False)
@@ -150,7 +173,10 @@ graph = g_builder.compile()
 
 mod = ti.aot.Module()" << arch2str(arch) << R"()
 mod.add_graph('g', graph)
-mod.save("module", '')
+temp_dir = tempfile.mkdtemp()
+mod.save(temp_dir, '')
+with open("temp_dir", "w") as f:
+    f.write(temp_dir)
 )";
   return ss.str();
 }
