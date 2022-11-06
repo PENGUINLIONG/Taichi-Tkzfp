@@ -15,7 +15,7 @@ void kernel_impl(ticpp::IntValue i, ticpp::FloatValue f, ticpp::NdArrayValue nda
   TICPP_FOR(idxs, ndarray) {
     ndarray[idxs] = ticpp::VectorValue({
       ticpp::to_float(idxs[0]),
-      ticpp::to_float(idxs[1])
+      ticpp::to_float(idxs[1]) + f
     });
   };
 }
@@ -37,9 +37,9 @@ int main(int argc, const char** argv) {
     for (size_t j = 0; j < 8; ++j) {
       std::cout << "(";
       for (size_t k = 0; k < 2; ++k) {
-        std::cout << host_arr[(i * 8 + j) * 2 + k];
+        std::cout << host_arr[(i * 8 + j) * 2 + k] << " ";
       }
-      std::cout << ")";
+      std::cout << ") ";
     }
     std::cout << std::endl;
   }
